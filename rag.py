@@ -32,7 +32,7 @@ from llama_index.core.storage.storage_context import StorageContext
 
 load_dotenv()
 
-print("API KEY:", os.getenv("GROQ_API_KEY"))
+
 
 #
  #Settings.llm = LI_Groq(model="llama-3.1-8b-instant", temperature=0)
@@ -40,6 +40,8 @@ Settings.embed_model = HuggingFaceEmbedding(model_name="sentence-transformers/al
 Settings.node_parser = SentenceSplitter(chunk_size=600, chunk_overlap=100)
 
 DATA_DIR = "data"
+CHROMA_DIR = "chroma_db"
+COLLECTION_NAME = "agentic_ai_knowledge_assistant"
 
 docs = SimpleDirectoryReader(
     input_dir=DATA_DIR
@@ -47,10 +49,24 @@ docs = SimpleDirectoryReader(
 
 print(f"Loaded {len(docs)} documents")
 
-index = VectorStoreIndex.from_documents(docs) if docs else None
+client = chromadb.PersistentClient(path = CHROMA_DIR)
 
-retriever = index.as_retriever(similarity_top_k = 4) if index else None
+collection = client.get_or_create_collection(COLLECTION_NAME)
 
+vector_store = ChromaVectorStore(chroma_collection= collection)
+
+storage_context = StorageContext.from_defaults(vector_store = vector_store)
+
+if collection.count() == 0:
+    index = VectorStoreIndex.from_documents(
+        docs,
+        storage_context=storage_context
+    )
+else:
+    index = VectorStoreIndex.from_vector_store(
+        vector_store=vector_store
+    )
+retriever = index.as_retriever(similarity_top_k=3)
 
 
 # Extracts page number safely from varying metadata formats.
@@ -61,7 +77,7 @@ def _page_from_meta(meta: dict) -> str:
             return str(meta[k])
     return "?"
 
-def retrieve_with_citations(query: str, top_k: int = 5, max_chars: int = 650) -> str:
+def retrieve_with_citations(query: str, top_k: int = 3, max_chars: int = 400) -> str:
     """
     Returns chunks with citations like: [SOURCE: file.pdf p.3 | score=0.812] ...
     """
@@ -78,9 +94,10 @@ def retrieve_with_citations(query: str, top_k: int = 5, max_chars: int = 650) ->
         out.append(f"[SOURCE: {src} p.{page} | score={h.score:.3f}] {txt[:max_chars]}")
     return "\n\n".join(out) if out else "No relevant chunks found."
 
-
-#llm for the agent
-llm = ChatGroq(model="llama-3.1-8b-instant", temperature=0)
+llm = ChatGroq(
+    model="openai/gpt-oss-20b",
+    temperature=0
+)
 
 @tool
 def retrieval_from_docs(question:str)->str:
@@ -96,22 +113,33 @@ tools  = [retrieval_from_docs]
 tool_agent = create_agent(
     model = llm,
     tools = tools,
-    system_prompt= ("You are a TOOL-AUGMENTED assistant for survey papers.\n"
-        "Rules (must follow):\n"
-        "1) If the user asks any arithmetic, you MUST call calculator and output the numeric result.\n"
-        "2) If the user asks for claims from documents, you MUST call private_docs_retriever.\n"
-        "3) Final output MUST have exactly 2 sections in this order:\n"
-        "   A) Math: <number>\n"
-        "   B) Open problems (3 lines):\n"
-        "      - <open problem> (Cite: file p.X)\n"
-        "      - <open problem> (Cite: file p.X)\n"
-        "      - <open problem> (Cite: file p.X)\n"
-        "If evidence is missing, write: 'Not found in documents' (no invention).\n"
-        "Never invent citations."
+  system_prompt=(
+        "You are a helpful assistant that answers questions using the provided "
+        "course documents.\n\n"
+        
+        "Rules:\n"
+        "1) When the user asks about information from the documents, "
+        "you MUST call the retrieval_from_docs tool.\n"
+        
+        "2) Use the retrieved document chunks to answer the question.\n"
+        
+        "3) Always include the source filename and page number when citing "
+        "information from the documents.\n"
+        
+        "4) Never invent information or citations.\n"
+        
+        "5) If the documents do not contain enough information to answer "
+        "the question, say: 'Not found in documents.'\n"
     )
 )
 
 
-query = "  list 3 key open problems in CSP"
-res = tool_agent.invoke({"messages": [{"role": "user", "content": query}]})
+query = "What are the main algorithms used to solve a CSP?"
+
+res = tool_agent.invoke({
+    "messages": [
+        {"role": "user", "content": query}
+    ]
+})
+
 print(res["messages"][-1].content)
