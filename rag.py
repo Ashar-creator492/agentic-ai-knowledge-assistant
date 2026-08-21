@@ -20,6 +20,11 @@ from llama_index.core import (
     SimpleDirectoryReader,
     Settings,
 )
+from llama_index.core.vector_stores.types import (
+    MetadataFilter,
+    MetadataFilters,
+    FilterOperator,
+)
 
 from llama_index.embeddings.huggingface import HuggingFaceEmbedding
 from llama_index.core.node_parser import SentenceSplitter
@@ -85,6 +90,38 @@ def add_document_metadata(doc, filename: str):
     doc.metadata = metadata
 
 
+def migrate_existing_user_ids():
+    """Add user_id to legacy Chroma rows without re-embedding documents."""
+    try:
+        existing = collection.get(include=["metadatas"])
+    except Exception as exc:
+        print(f"Could not read Chroma metadata for migration: {exc}")
+        return
+
+    ids = existing.get("ids", []) or []
+    metadatas = existing.get("metadatas", []) or []
+
+    updates = []
+    for doc_id, meta in zip(ids, metadatas):
+        if not isinstance(meta, dict):
+            continue
+        if meta.get("user_id") == USER_ID:
+            continue
+        updated = dict(meta)
+        updated["user_id"] = USER_ID
+        updates.append({"id": doc_id, "metadata": updated})
+
+    if not updates:
+        print(f"All existing Chroma records already have user_id={USER_ID}")
+        return
+
+    collection.update(
+        ids=[item["id"] for item in updates],
+        metadatas=[item["metadata"] for item in updates],
+    )
+    print(f"Updated {len(updates)} existing Chroma records with user_id={USER_ID}")
+
+
 def index_new_pdfs():
     if not os.path.isdir(UPLOAD_DIR):
         print(f"Upload directory not found: {UPLOAD_DIR}")
@@ -136,13 +173,28 @@ storage_context = StorageContext.from_defaults(
     vector_store=vector_store
 )
 
+migrate_existing_user_ids()
 index_new_pdfs()
 
 index = VectorStoreIndex.from_vector_store(
     vector_store=vector_store
 )
 
-retriever = index.as_retriever(similarity_top_k=3)
+user_filter = MetadataFilters(
+    filters=[
+        MetadataFilter(
+            key="user_id",
+            value=USER_ID,
+            operator=FilterOperator.EQ,
+        )
+    ]
+)
+
+print(f"USER_ID = {USER_ID}")
+retriever = index.as_retriever(
+    similarity_top_k=3,
+    filters=user_filter,
+)
 
 
 # Extracts page number safely from varying metadata formats.
