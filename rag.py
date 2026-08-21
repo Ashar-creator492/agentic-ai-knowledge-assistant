@@ -122,6 +122,29 @@ def migrate_existing_user_ids():
     print(f"Updated {len(updates)} existing Chroma records with user_id={USER_ID}")
 
 
+def index_pdf(pdf_path: str, user_id: str = USER_ID):
+    """Index one specific PDF into the existing persistent Chroma collection."""
+    if not os.path.isfile(pdf_path):
+        raise FileNotFoundError(f"PDF not found: {pdf_path}")
+
+    filename = os.path.basename(pdf_path)
+    indexed_filenames = get_indexed_filenames()
+    if filename in indexed_filenames:
+        print(f"Skipping already indexed PDF: {filename}")
+        return
+
+    docs = load_documents(pdf_path)
+    for doc in docs:
+        add_document_metadata(doc, filename)
+        doc.metadata["user_id"] = user_id
+
+    VectorStoreIndex.from_documents(
+        docs,
+        storage_context=storage_context
+    )
+    print(f"Indexed PDF: {filename} (user_id={user_id})")
+
+
 def index_new_pdfs():
     if not os.path.isdir(UPLOAD_DIR):
         print(f"Upload directory not found: {UPLOAD_DIR}")
@@ -133,32 +156,19 @@ def index_new_pdfs():
         if file.lower().endswith(".pdf")
     ]
 
-    indexed_filenames = get_indexed_filenames()
-    new_pdf_files = []
+    if not pdf_files:
+        print("No PDFs found in uploads.")
+        return
 
     for pdf_path in pdf_files:
         filename = os.path.basename(pdf_path)
-        if filename in indexed_filenames:
+        if filename in get_indexed_filenames():
             print(f"Skipping already indexed PDF: {filename}")
             continue
-        new_pdf_files.append(pdf_path)
+        index_pdf(pdf_path, user_id=USER_ID)
 
-    if not new_pdf_files:
+    if not any(os.path.basename(path) not in get_indexed_filenames() for path in pdf_files):
         print("No new PDFs to index.")
-        return
-
-    for pdf_path in new_pdf_files:
-        docs = load_documents(pdf_path)
-        filename = os.path.basename(pdf_path)
-
-        for doc in docs:
-            add_document_metadata(doc, filename)
-
-        VectorStoreIndex.from_documents(
-            docs,
-            storage_context=storage_context
-        )
-        print(f"Indexed new PDF: {filename}")
 
 
 client = chromadb.PersistentClient(path=CHROMA_DIR)
