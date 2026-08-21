@@ -272,12 +272,13 @@ tool_agent = create_agent(
 )
 
 
-query = "explain force"
+if __name__ == "__main__":
+    query = "explain force"
 
-res = tool_agent.invoke({
-    "messages": [
-        {"role": "user", "content": query}
-    ]
-})
+    res = tool_agent.invoke({
+        "messages": [
+            {"role": "user", "content": query}
+        ]
+    })
 
-print(res["messages"][-1].content)
+    print(res["messages"][-1].content)
