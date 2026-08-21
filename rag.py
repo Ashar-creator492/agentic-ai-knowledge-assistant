@@ -42,6 +42,7 @@ Settings.node_parser = SentenceSplitter(chunk_size=600, chunk_overlap=100)
 UPLOAD_DIR = "uploads"
 CHROMA_DIR = "chroma_db"
 COLLECTION_NAME = "agentic_ai_knowledge_assistant"
+USER_ID = "user_1"
 
 def load_documents(pdf_path: str):
     docs = SimpleDirectoryReader(
@@ -80,6 +81,7 @@ def add_document_metadata(doc, filename: str):
     metadata["document_id"] = filename
     metadata["filename"] = filename
     metadata["file_name"] = metadata.get("file_name") or filename
+    metadata["user_id"] = USER_ID
     doc.metadata = metadata
 
 
