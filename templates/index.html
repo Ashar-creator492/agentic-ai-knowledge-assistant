@@ -1,0 +1,63 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Agentic AI Knowledge Assistant</title>
+    <link rel="stylesheet" href="/static/styles.css" />
+  </head>
+  <body>
+    <div class="app-shell">
+      <header class="topbar">
+        <div class="brand-wrap">
+          <div class="brand-mark">AI</div>
+          <div>
+            <p class="eyebrow">Knowledge Assistant</p>
+            <h1>Agentic AI</h1>
+          </div>
+        </div>
+      </header>
+
+      <main class="main-layout">
+        <section class="panel upload-panel">
+          <div class="panel-header">
+            <h2>Upload PDF</h2>
+          </div>
+
+          <form id="uploadForm" class="upload-form">
+            <label class="upload-dropzone" for="pdfInput">
+              <input id="pdfInput" type="file" accept="application/pdf" />
+              <span class="upload-icon">📄</span>
+              <span id="fileLabel">Choose a PDF to upload</span>
+            </label>
+
+            <button id="uploadButton" type="submit" class="primary-button">
+              Upload and Index
+            </button>
+          </form>
+
+          <div id="uploadStatus" class="status-box hidden" aria-live="polite"></div>
+        </section>
+
+        <section class="panel chat-panel">
+          <div class="panel-header">
+            <h2>Ask about your documents</h2>
+          </div>
+
+          <div id="chatMessages" class="chat-messages" aria-live="polite"></div>
+
+          <form id="chatForm" class="chat-form">
+            <textarea
+              id="questionInput"
+              rows="1"
+              placeholder="Ask a question about your uploaded documents..."
+            ></textarea>
+            <button id="sendButton" type="submit" class="primary-button">Send</button>
+          </form>
+        </section>
+      </main>
+    </div>
+
+    <script src="/static/app.js"></script>
+  </body>
+</html>
