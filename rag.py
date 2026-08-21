@@ -39,7 +39,7 @@ load_dotenv()
 Settings.embed_model = HuggingFaceEmbedding(model_name="sentence-transformers/all-MiniLM-L6-v2")
 Settings.node_parser = SentenceSplitter(chunk_size=600, chunk_overlap=100)
 
-DATA_DIR = "data"
+UPLOAD_DIR = "uploads"
 CHROMA_DIR = "chroma_db"
 COLLECTION_NAME = "agentic_ai_knowledge_assistant"
 
@@ -52,27 +52,94 @@ def load_documents(pdf_path: str):
     return docs
 
 
-pdf_path = os.path.join(DATA_DIR, "CSP_Course_Scheduling.pdf")
+def get_indexed_filenames() -> set[str]:
+    """Return file names already present in the Chroma collection.
 
-docs = load_documents(pdf_path)
+    This is intentionally simple for the current stage; later we can replace
+    filename-based identity with a user_id/document_id scheme.
+    """
+    try:
+        existing = collection.get(include=["metadatas"])
+    except Exception as exc:
+        print(f"Could not read Chroma metadata: {exc}")
+        return set()
 
-client = chromadb.PersistentClient(path = CHROMA_DIR)
+    indexed = set()
+    for meta in existing.get("metadatas", []) or []:
+        if not isinstance(meta, dict):
+            continue
+        file_name = meta.get("file_name") or meta.get("filename")
+        if file_name:
+            indexed.add(file_name)
+
+    return indexed
+
+
+def add_document_metadata(doc, filename: str):
+    metadata = dict(doc.metadata or {})
+    metadata["document_id"] = filename
+    metadata["filename"] = filename
+    metadata["file_name"] = metadata.get("file_name") or filename
+    doc.metadata = metadata
+
+
+def index_new_pdfs():
+    if not os.path.isdir(UPLOAD_DIR):
+        print(f"Upload directory not found: {UPLOAD_DIR}")
+        return
+
+    pdf_files = [
+        os.path.join(UPLOAD_DIR, file)
+        for file in sorted(os.listdir(UPLOAD_DIR))
+        if file.lower().endswith(".pdf")
+    ]
+
+    indexed_filenames = get_indexed_filenames()
+    new_pdf_files = []
+
+    for pdf_path in pdf_files:
+        filename = os.path.basename(pdf_path)
+        if filename in indexed_filenames:
+            print(f"Skipping already indexed PDF: {filename}")
+            continue
+        new_pdf_files.append(pdf_path)
+
+    if not new_pdf_files:
+        print("No new PDFs to index.")
+        return
+
+    for pdf_path in new_pdf_files:
+        docs = load_documents(pdf_path)
+        filename = os.path.basename(pdf_path)
+
+        for doc in docs:
+            add_document_metadata(doc, filename)
+
+        VectorStoreIndex.from_documents(
+            docs,
+            storage_context=storage_context
+        )
+        print(f"Indexed new PDF: {filename}")
+
+
+client = chromadb.PersistentClient(path=CHROMA_DIR)
 
 collection = client.get_or_create_collection(COLLECTION_NAME)
 
-vector_store = ChromaVectorStore(chroma_collection= collection)
+vector_store = ChromaVectorStore(
+    chroma_collection=collection
+)
 
-storage_context = StorageContext.from_defaults(vector_store = vector_store)
+storage_context = StorageContext.from_defaults(
+    vector_store=vector_store
+)
 
-if collection.count() == 0:
-    index = VectorStoreIndex.from_documents(
-        docs,
-        storage_context=storage_context
-    )
-else:
-    index = VectorStoreIndex.from_vector_store(
-        vector_store=vector_store
-    )
+index_new_pdfs()
+
+index = VectorStoreIndex.from_vector_store(
+    vector_store=vector_store
+)
+
 retriever = index.as_retriever(similarity_top_k=3)
 
 
@@ -141,7 +208,7 @@ tool_agent = create_agent(
 )
 
 
-query = "What are the main algorithms used to solve a CSP?"
+query = "explain force"
 
 res = tool_agent.invoke({
     "messages": [
