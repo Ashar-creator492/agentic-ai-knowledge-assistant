@@ -43,11 +43,18 @@ DATA_DIR = "data"
 CHROMA_DIR = "chroma_db"
 COLLECTION_NAME = "agentic_ai_knowledge_assistant"
 
-docs = SimpleDirectoryReader(
-    input_dir=DATA_DIR
-).load_data()
+def load_documents(pdf_path: str):
+    docs = SimpleDirectoryReader(
+        input_files=[pdf_path]
+    ).load_data()
 
-print(f"Loaded {len(docs)} documents")
+    print(f"Loaded {len(docs)} documents")
+    return docs
+
+
+pdf_path = os.path.join(DATA_DIR, "CSP_Course_Scheduling.pdf")
+
+docs = load_documents(pdf_path)
 
 client = chromadb.PersistentClient(path = CHROMA_DIR)
 
